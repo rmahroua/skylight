@@ -6,6 +6,47 @@
   with_items:
     - NetworkManager
 
+<<<<<<< HEAD
+- name: create dhclient.conf
+  file:
+    path: /etc/dhcp/dhclient.conf
+    state: touch
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: set custom DNS server
+=======
+- command: find /etc/sysconfig/network-scripts/ -type f -name "ifcfg-e*"
+  register: eths
+
+- name: Remove PeerDNS=yes entry
+  lineinfile:
+    path: "{{ item }}"
+    regexp: '^PEERDNS='
+    line: 'PEERDNS=no'
+  with_items: "{{ eths.stdout_lines }}"
+  register: ifcfg
+
+- name: set DNS resolution in resolv.conf file
+  template:
+    src: templates/resolv.conf.j2
+    dest: /etc/resolv.conf
+  register: etchost
+
+- name: set DNS resolution in ifcfg file
+>>>>>>> upstream/master
+  blockinfile:
+    dest: /etc/dhcp/dhclient.conf
+    block: |
+      prepend domain-name-servers {{ hostvars['windc']['private_ip'] }};
+      prepend domain-search "{{ dns_domain_name }}", "ec2.internal";
+    state: present
+  register: dnschange
+<<<<<<< HEAD
+=======
+  with_items: "{{ eths.stdout_lines }}"
+
 - name: create dhclient.conf
   file:
     path: /etc/dhcp/dhclient.conf
@@ -22,20 +63,45 @@
       prepend domain-search "{{ dns_domain_name }}", "ec2.internal";
     state: present
   register: dnschange
+>>>>>>> upstream/master
 
 - name: restart NetworkManager
   service:
     name: NetworkManager
     state: restarted
-  when: dnschange.changed or etchost.changed
+  when: dnschange.changed or ifcfg.changed
 
-- name: Add EPEL repo
+- name: Add EPEL repo for RHEL 7
   yum_repository:
     name: epel
     description: EPEL for Enterprise Linux 7
     baseurl: https://dl.fedoraproject.org/pub/epel/7/x86_64/
     enabled: yes
     gpgcheck: no
+  when: ansible_distribution_major_version|int == 7
+
+- name: Add EPEL repo for RHEL 8
+  yum_repository:
+    name: epel
+    description: EPEL for Enterprise Linux 8
+    baseurl: https://dl.fedoraproject.org/pub/epel/8/Everything/x86_64/
+    enabled: yes
+    gpgcheck: no
+  when: ansible_distribution_major_version|int == 8
+
+- name: Enable optional repos for RHEL 7 (ec2)
+  command: yum-config-manager --enable rhui-REGION-rhel-server-extras rhui-REGION-rhel-server-optional
+  when:
+    - ansible_distribution == 'RedHat'
+    - ansible_distribution_major_version|int == 7
+    - instance_loc == 'ec2'
+
+- name: Enable appstream repo for RHEL 8 (non-ec2)
+  command: yum-config-manager --enable rhel-8-for-x86_64-appstream-rpms
+  when:
+    - ansible_distribution == 'RedHat'
+    - ansible_distribution_major_version|int == 8
+    - instance_loc != 'ec2'
 
 - name: Install packages
   package:
@@ -43,6 +109,3 @@
       - vim
       - bind-utils
     state: present
-
-
-
